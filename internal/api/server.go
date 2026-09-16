@@ -220,6 +220,11 @@ func (s *Server) registerAPIGroup(prefix string) {
 	// reverse-proxied to that region's backend.
 	region := s.regionRouter()
 
+	// A credential the person can paste into a shell. Session-guarded like every
+	// other API route, and deliberately a GET the UI only issues on an explicit
+	// click — it returns a secret, so it must never ride along with a page load.
+	apiRoutes.GET("/cli-credentials", s.HandleCLICredentials(), region)
+
 	// In iam mode the panel signs object calls with a credential it obtained on
 	// the user's behalf, which makes it the enforcement point. Each route names
 	// the permission IT needs, so the gate is per route rather than on the group;
