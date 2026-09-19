@@ -44,26 +44,6 @@ type Session struct {
 	// SessionExpiresAt is when the sign-in itself ends and the user must
 	// authenticate again, no matter how many refreshes have happened.
 	SessionExpiresAt time.Time `json:"session_expires_at"`
-	// AuthTime is when the PERSON last proved who they are, from the ID token's
-	// auth_time claim.
-	//
-	// Deliberately not advanced by a token refresh: a refresh proves the session
-	// is still alive, not that whoever is holding it is still the person who
-	// signed in. A route that hands out a credential wants the second thing.
-	AuthTime time.Time `json:"auth_time,omitempty"`
-}
-
-// FreshlyAuthenticated reports whether the person proved who they are within
-// the given window.
-//
-// A zero AuthTime is NOT fresh. It means the session predates this field, and
-// treating "we don't know" as "recent" is the failure that makes the check
-// decorative.
-func (s Session) FreshlyAuthenticated(within time.Duration) bool {
-	if s.AuthTime.IsZero() {
-		return false
-	}
-	return time.Since(s.AuthTime) <= within
 }
 
 // TokenExpired reports whether the access token needs refreshing. The leeway

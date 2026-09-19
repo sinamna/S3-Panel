@@ -238,20 +238,11 @@ func (s *Server) registerAPIGroup(prefix string) {
 	// reverse-proxied to that region's backend.
 	region := s.regionRouter()
 
-	// A credential the person can paste into a shell.
-	//
-	// POST, not GET, and CSRF-protected: it returns a secret, so it must not be
-	// reachable by navigation, by an <img>/<form>, or by a cross-origin read that
-	// a single CORS misconfiguration would permit. The handler additionally
-	// requires a RECENT authentication, so a stolen session cookie alone does not
-	// yield a credential that outlives the browser.
-	//
-	// The companion GET issues the token the POST must echo back. Echo's CSRF
-	// middleware generates on safe methods and validates on unsafe ones, so both
-	// routes share it.
-	csrf := s.csrfMiddleware()
-	apiRoutes.GET("/csrf-token", s.HandleCSRFToken(), csrf)
-	apiRoutes.POST("/cli-credentials", s.HandleCLICredentials(), csrf, region)
+	// There is deliberately NO route that hands a storage credential to the
+	// browser. A credential that leaves this console works from anywhere, for its
+	// whole lifetime, with none of the per-request permission checks applied here
+	// — so the console obtains credentials for its OWN object calls and they go
+	// no further.
 
 	// In iam mode the panel signs object calls with a credential it obtained on
 	// the user's behalf, which makes it the enforcement point. Each route names
