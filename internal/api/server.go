@@ -99,6 +99,24 @@ func (s *Server) registerIAMMode(ctx context.Context) error {
 		return fmt.Errorf("iam auth mode: %w", err)
 	}
 	s.control = controlClient.WithSTSClientKey(s.Config.ObjectStorage.STSClientKey)
+
+	// Signing out revokes the storage credentials this console obtained on the
+	// person's behalf. Without it, logout leaves a real credential live for
+	// hours, usable from anywhere, that the browser no longer shows anyone.
+	//
+	// "console" is passed explicitly: a credential the same person took to a
+	// shell keeps its own lifetime, because closing a browser tab should not
+	// break a terminal somewhere else.
+	if s.auth != nil {
+		s.auth.OnLogout = func(ctx context.Context, session auth.Session) {
+			if err := s.control.RevokeSessions(ctx, session.AccessToken, s.Config.Server.Region, "console"); err != nil {
+				// Best effort: a failed revoke must not stop the person signing
+				// out, and the credential still expires on its own.
+				s.logger.Warn("could not revoke storage credentials on sign-out",
+					zap.String("subject", session.Subject), zap.Error(err))
+			}
+		}
+	}
 	s.credentials = newCredentialCache(ctx)
 
 	return nil
@@ -220,10 +238,20 @@ func (s *Server) registerAPIGroup(prefix string) {
 	// reverse-proxied to that region's backend.
 	region := s.regionRouter()
 
-	// A credential the person can paste into a shell. Session-guarded like every
-	// other API route, and deliberately a GET the UI only issues on an explicit
-	// click — it returns a secret, so it must never ride along with a page load.
-	apiRoutes.GET("/cli-credentials", s.HandleCLICredentials(), region)
+	// A credential the person can paste into a shell.
+	//
+	// POST, not GET, and CSRF-protected: it returns a secret, so it must not be
+	// reachable by navigation, by an <img>/<form>, or by a cross-origin read that
+	// a single CORS misconfiguration would permit. The handler additionally
+	// requires a RECENT authentication, so a stolen session cookie alone does not
+	// yield a credential that outlives the browser.
+	//
+	// The companion GET issues the token the POST must echo back. Echo's CSRF
+	// middleware generates on safe methods and validates on unsafe ones, so both
+	// routes share it.
+	csrf := s.csrfMiddleware()
+	apiRoutes.GET("/csrf-token", s.HandleCSRFToken(), csrf)
+	apiRoutes.POST("/cli-credentials", s.HandleCLICredentials(), csrf, region)
 
 	// In iam mode the panel signs object calls with a credential it obtained on
 	// the user's behalf, which makes it the enforcement point. Each route names

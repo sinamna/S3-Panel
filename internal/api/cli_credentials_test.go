@@ -13,6 +13,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"go.uber.org/zap"
 
+	"github.com/snapp-incubator/S3-Panel/internal/auth"
 	"github.com/snapp-incubator/S3-Panel/internal/config"
 	"github.com/snapp-incubator/S3-Panel/internal/control"
 )
@@ -173,5 +174,71 @@ func TestCLICredentialsHonoursAnExplicitWriteAsk(t *testing.T) {
 	}
 	if form.Get("Access") != accessReadWrite {
 		t.Errorf("Access = %q, want %q", form.Get("Access"), accessReadWrite)
+	}
+}
+
+// TestCLICredentialsRequiresRecentAuthentication.
+//
+// A session cookie is a bearer token: whoever holds it is the user. That is an
+// acceptable trade for browsing and a poor one for issuing a credential that
+// outlives the browser and works from anywhere, so this route wants proof the
+// PERSON is still there — which is what sends an attacker holding only a stolen
+// cookie back to Keycloak.
+func TestCLICredentialsRequiresRecentAuthentication(t *testing.T) {
+	cases := []struct {
+		name     string
+		authTime time.Time
+		wantOK   bool
+	}{
+		{"just authenticated", time.Now(), true},
+		{"authenticated a minute ago", time.Now().Add(-time.Minute), true},
+		{"authenticated an hour ago", time.Now().Add(-time.Hour), false},
+		{"never recorded (a session predating the field)", time.Time{}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			sts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/xml")
+				_, _ = w.Write([]byte(`<?xml version="1.0"?>
+<GetSessionTokenResponse><GetSessionTokenResult><Credentials>
+<AccessKeyId>AK</AccessKeyId><SecretAccessKey>SK</SecretAccessKey>
+<SessionToken></SessionToken><Expiration>2030-01-01T00:00:00Z</Expiration>
+</Credentials></GetSessionTokenResult></GetSessionTokenResponse>`))
+			}))
+			defer sts.Close()
+			client, _ := control.New(sts.URL, sts.URL, time.Second)
+			s := &Server{
+				Config:  config.Config{Server: config.ServerConfig{AuthMode: config.AuthModeIAM}},
+				control: client,
+				logger:  zap.NewNop(),
+			}
+
+			e := echo.New()
+			c := e.NewContext(httptest.NewRequest(http.MethodPost, "/api/v1/cli-credentials", nil),
+				httptest.NewRecorder())
+			c.Set(auth.SessionContextKey, auth.Session{
+				Subject: "u-alice", Email: "alice@example.com", AuthTime: tc.authTime,
+			})
+
+			err := s.HandleCLICredentials()(c)
+			if tc.wantOK {
+				if err != nil {
+					t.Fatalf("a freshly authenticated caller was refused: %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("a stale session was issued a credential")
+			}
+			he, ok := err.(*echo.HTTPError)
+			if !ok || he.Code != http.StatusUnauthorized {
+				t.Fatalf("error = %v, want 401", err)
+			}
+			// The console needs to know to re-authenticate rather than give up.
+			body, _ := he.Message.(map[string]string)
+			if body["code"] != ErrCodeReauthRequired {
+				t.Errorf("code = %q, want %q", body["code"], ErrCodeReauthRequired)
+			}
+		})
 	}
 }

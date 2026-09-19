@@ -385,3 +385,35 @@ func asError(err error, target **Error) bool {
 	}
 	return false
 }
+
+// RevokeSessions asks the control endpoint to drop the credentials it issued to
+// one front end for the signed-in person.
+//
+// The subject is never sent: the endpoint uses the authenticated principal, so
+// this cannot be pointed at anybody else. client is passed explicitly because
+// the default there is "console" and the caller should be deliberate about it —
+// sending "" would revoke a shell credential too.
+func (c *Client) RevokeSessions(ctx context.Context, token, region, client string) error {
+	u := c.stsURL + "/logout?client=" + url.QueryEscape(client)
+	if region != "" {
+		u += "&region=" + url.QueryEscape(region)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	if c.stsClientKey != "" {
+		req.Header.Set(stsClientHeader, c.stsClientKey)
+	}
+	res, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close() //nolint:errcheck // response discarded
+	if res.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(res.Body, 2048))
+		return fmt.Errorf("revoke sessions: status %d: %s", res.StatusCode, strings.TrimSpace(string(body)))
+	}
+	return nil
+}

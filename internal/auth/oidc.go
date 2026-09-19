@@ -35,6 +35,11 @@ type Authenticator struct {
 	verifier *oidc.IDTokenVerifier
 	codec    *CookieCodec
 
+	// OnLogout runs before the session cookie is cleared, with the session that
+	// is about to end. The server uses it to revoke the storage credentials this
+	// console obtained for the person; left nil, logout just clears the cookie.
+	OnLogout func(context.Context, Session)
+
 	// Collapses concurrent and near-concurrent access-token refreshes, so one
 	// refresh token is never redeemed twice. See refreshShared.
 	refreshGroupFields
@@ -110,7 +115,18 @@ func (a *Authenticator) Login(c echo.Context) error {
 
 	a.setCookie(c, stateCookieName, state+"."+nonce, stateTTL)
 
-	return c.Redirect(http.StatusFound, a.oauth.AuthCodeURL(state, oidc.Nonce(nonce)))
+	opts := []oauth2.AuthCodeOption{oidc.Nonce(nonce)}
+	// ?prompt=login forces the provider to re-authenticate the person rather than
+	// silently reusing its own session. A route that hands out a credential sends
+	// the user here when their last authentication has gone stale; without this
+	// the redirect round-trips and comes back just as stale.
+	if c.QueryParam("prompt") == "login" {
+		opts = append(opts,
+			oauth2.SetAuthURLParam("prompt", "login"),
+			oauth2.SetAuthURLParam("max_age", "0"))
+	}
+
+	return c.Redirect(http.StatusFound, a.oauth.AuthCodeURL(state, opts...))
 }
 
 // Callback completes the flow and sets the session cookie.
@@ -170,7 +186,18 @@ func (a *Authenticator) Callback(c echo.Context) error {
 // Logout clears the session cookie. It does not end the session at the provider:
 // a shared-browser logout is the operator's policy call, and doing it here would
 // sign the user out of every application on the same realm.
+//
+// It does, however, revoke the storage credentials this console obtained on the
+// person's behalf. Without that, signing out leaves a credential live for hours
+// — a real one, usable from anywhere, that the browser no longer shows anyone.
+// OnLogout is best effort: a revoke that fails must not leave the person unable
+// to sign out, and the credential still expires on its own.
 func (a *Authenticator) Logout(c echo.Context) error {
+	if a.OnLogout != nil {
+		if session, ok := a.Load(c); ok {
+			a.OnLogout(c.Request().Context(), session)
+		}
+	}
 	a.clearCookie(c, a.cookieName())
 	return c.NoContent(http.StatusNoContent)
 }
@@ -290,6 +317,10 @@ func (a *Authenticator) sessionFromToken(idToken *oidc.IDToken, token *oauth2.To
 		// How long the person stays signed in, independent of how often the
 		// access token underneath is rotated.
 		SessionExpiresAt: time.Now().Add(a.sessionTTL()),
+		// When the person actually authenticated. Keycloak reports auth_time when
+		// the request asked for it; if it is absent, sign-in happened just now,
+		// which is the honest reading at the callback.
+		AuthTime: authTimeClaim(claims),
 	}
 	if session.Email == "" {
 		// Some providers only put the address in preferred_username.
@@ -397,4 +428,27 @@ func dedupe(in []string) []string {
 		out = append(out, v)
 	}
 	return out
+}
+
+// authTimeClaim reads the OIDC auth_time claim, falling back to now.
+//
+// The claim is a NumericDate, which lands as a float64 through a generic JSON
+// decode. Absent means the provider did not report it; at the callback the
+// person has just authenticated, so now is correct — and it is also the
+// conservative direction, since the only thing that consumes this treats older
+// as less trustworthy.
+func authTimeClaim(claims map[string]any) time.Time {
+	if v, ok := claims["auth_time"]; ok {
+		switch n := v.(type) {
+		case float64:
+			if n > 0 {
+				return time.Unix(int64(n), 0)
+			}
+		case int64:
+			if n > 0 {
+				return time.Unix(n, 0)
+			}
+		}
+	}
+	return time.Now()
 }

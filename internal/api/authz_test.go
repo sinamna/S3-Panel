@@ -51,7 +51,11 @@ func iamModeServer(t *testing.T) (*Server, func()) {
 }
 
 func withSession(c echo.Context) echo.Context {
-	c.Set(auth.SessionContextKey, auth.Session{Subject: "u-alice", Email: "alice@example.com"})
+	// AuthTime is set because routes that issue a credential require a RECENT
+	// authentication; a session without it is deliberately treated as stale.
+	c.Set(auth.SessionContextKey, auth.Session{
+		Subject: "u-alice", Email: "alice@example.com", AuthTime: time.Now(),
+	})
 	return c
 }
 

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 
 	"github.com/snapp-incubator/S3-Panel/internal/auth"
 )
@@ -32,6 +33,23 @@ import (
 // terminal cannot be silently refreshed the way the panel's cache is, and
 // shorter than the 12h cap because it is going to sit in a shell profile.
 const cliCredentialTTL = 4 * time.Hour
+
+// freshAuthWindow is how recently the person must have proved who they are
+// before this route will hand them a credential.
+//
+// A session cookie is a bearer token: whoever has it is the user. That is a fine
+// trade for browsing, and a poor one for issuing a credential that outlives the
+// browser and works from anywhere. Requiring a recent authentication means a
+// stolen cookie alone is not enough — the attacker also has to get past
+// Keycloak, which is where the second factor lives.
+//
+// Long enough that someone doing a few things in a sitting is not prompted
+// twice; short enough that a cookie lifted from a closed laptop is useless.
+const freshAuthWindow = 5 * time.Minute
+
+// ErrCodeReauthRequired is returned so the console can send the person through
+// /auth/login?prompt=login rather than showing them a bare 401.
+const ErrCodeReauthRequired = "reauth_required"
 
 // cliCredentialsResponse is what the UI renders.
 type cliCredentialsResponse struct {
@@ -62,6 +80,15 @@ func (s *Server) HandleCLICredentials() echo.HandlerFunc {
 		session, ok := auth.SessionFrom(c)
 		if !ok {
 			return echo.NewHTTPError(http.StatusUnauthorized, "authentication required")
+		}
+
+		// Re-authentication, not just a live session. See freshAuthWindow.
+		if !session.FreshlyAuthenticated(freshAuthWindow) {
+			return echo.NewHTTPError(http.StatusUnauthorized, map[string]string{
+				"code":    ErrCodeReauthRequired,
+				"message": "Confirm your identity before a command-line credential is issued.",
+				"login":   "/auth/login?prompt=login",
+			})
 		}
 
 		region := s.requestRegion(c)
@@ -142,5 +169,34 @@ endpoint = %s
 region = %s
 
 # rclone ls snapp:<tenant>:<bucket>`, accessKey, secret, endpoint, region),
+	}
+}
+
+// csrfMiddleware protects the credential route.
+//
+// Double-submit: the token is issued in a cookie by the GET below and must be
+// echoed in the X-CSRF-Token header on the POST. A cross-origin page can cause
+// the cookie to be SENT but cannot READ it, so it cannot produce the header —
+// and setting a custom header forces a preflight that CORS refuses.
+//
+// The cookie is SameSite=Strict and HttpOnly=false on purpose: the console's own
+// script has to read it to build the header, and Strict keeps it off
+// cross-origin requests entirely.
+func (s *Server) csrfMiddleware() echo.MiddlewareFunc {
+	return middleware.CSRFWithConfig(middleware.CSRFConfig{
+		TokenLookup:    "header:X-CSRF-Token",
+		CookieName:     "s3panel_csrf",
+		CookiePath:     "/",
+		CookieHTTPOnly: false,
+		CookieSameSite: http.SameSiteStrictMode,
+		CookieSecure:   s.Config.Server.IsIAMMode(),
+	})
+}
+
+// HandleCSRFToken hands the console the token it must echo on the POST.
+func (s *Server) HandleCSRFToken() echo.HandlerFunc {
+	return func(c echo.Context) error {
+		token, _ := c.Get(middleware.DefaultCSRFConfig.ContextKey).(string)
+		return c.JSON(http.StatusOK, map[string]string{"csrf_token": token})
 	}
 }
