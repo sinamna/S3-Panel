@@ -26,7 +26,18 @@ Sentry.init({
     Sentry.tanstackRouterBrowserTracingIntegration(router)
   ],
   // Performance Monitoring
-  tracesSampleRate: 1.0
+  tracesSampleRate: 1.0,
+  // Sentry v11 collects cookies, headers and bodies unless told otherwise; keep the v10 baseline.
+  dataCollection: {
+    userInfo: false,
+    cookies: false,
+    httpHeaders: {
+      request: { deny: ['forwarded', '-ip', 'remote-', 'via', '-user'] },
+      response: { deny: ['forwarded', '-ip', 'remote-', 'via', '-user'] }
+    },
+    httpBodies: [],
+    urlQueryParams: { deny: ['forwarded', '-ip', 'remote-', 'via', '-user'] }
+  }
 })
 
 createRoot(document.getElementById('root')!).render(
