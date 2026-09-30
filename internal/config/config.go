@@ -60,7 +60,7 @@ func Provide(configPath string) Config {
 		log.Fatalf("error unmarshalling config: %s", err)
 	}
 
-	indent, err := json.MarshalIndent(instance, "", "\t")
+	indent, err := json.MarshalIndent(redacted(instance), "", "\t")
 	if err != nil {
 		panic(err)
 	}
@@ -74,4 +74,29 @@ func Provide(configPath string) Config {
 	`, string(indent))
 
 	return instance
+}
+
+// redacted returns a copy of the configuration that is safe to log.
+//
+// The loaded configuration is printed in full at startup, and it holds real
+// secrets: the OIDC client secret (in iam mode this can be IAM's own Keycloak
+// client), the session-cookie key, the STS client key that keeps /sts closed to
+// everything but this console, the static bearer token and the S3 admin
+// keypair. Pod logs are readable by everyone with access to the namespace and
+// are usually shipped to a log store, so each of these is replaced with a marker
+// that still says whether it was set.
+func redacted(c Config) Config {
+	mask := func(v string) string {
+		if v == "" {
+			return ""
+		}
+		return "[redacted]"
+	}
+	c.Server.AuthToken = mask(c.Server.AuthToken)
+	c.ObjectStorage.AccessKeyAdmin = mask(c.ObjectStorage.AccessKeyAdmin)
+	c.ObjectStorage.SecretKeyAdmin = mask(c.ObjectStorage.SecretKeyAdmin)
+	c.ObjectStorage.STSClientKey = mask(c.ObjectStorage.STSClientKey)
+	c.OIDC.ClientSecret = mask(c.OIDC.ClientSecret)
+	c.OIDC.CookieKey = mask(c.OIDC.CookieKey)
+	return c
 }
