@@ -25,3 +25,9 @@ snapp-object-store-dev:
 #   s3panel_oidc__cookie_key      (REQUIRED in iam mode; openssl rand -base64 32)
 # Left empty the container gets no env, which is correct for auth_mode "s3".
 existingSecret: ""
+
+# Render this chart's own HTTPProxy. Disable when another HTTPProxy routes to the
+# Service, e.g. the panel served at a path prefix of IAM's console host.
+httpproxy:
+  enabled: true
+

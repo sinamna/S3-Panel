@@ -5,6 +5,7 @@ import {
   fetchPanelSession,
   PanelRequestError
 } from '@/api/panel'
+import { withBase } from '@/lib/basePath'
 import type { IPanelSessionResponse, TAuthMode } from '@/types/s3/panel.types'
 
 interface IPanelSessionStore {
@@ -136,9 +137,12 @@ const usePanelSession = create<IPanelSessionStore>((set, get) => ({
   isAdmin: () => get().session?.is_admin === true,
 
   logout: async () => {
-    await fetch('/auth/logout', { method: 'POST', credentials: 'include' })
+    await fetch(withBase('/auth/logout'), {
+      method: 'POST',
+      credentials: 'include'
+    })
     set({ session: null })
-    window.location.href = '/'
+    window.location.href = withBase('/')
   }
 }))
 

@@ -1,3 +1,4 @@
+import { withBase } from '@/lib/basePath'
 import centralClient from '@/services/http/centralClient'
 import type {
   IIAMBucketDetailResponse,
@@ -37,7 +38,7 @@ const fetchPanelConfig = async (): Promise<IPanelConfigResponse> => {
   let res: Response
 
   try {
-    res = await fetch('/api/config', { credentials: 'include' })
+    res = await fetch(withBase('/api/config'), { credentials: 'include' })
   } catch (cause) {
     throw new PanelRequestError(`panel config unreachable: ${String(cause)}`, 0)
   }
@@ -59,7 +60,7 @@ const fetchPanelSession = async (): Promise<IPanelSessionResponse> => {
   let res: Response
 
   try {
-    res = await fetch('/auth/me', { credentials: 'include' })
+    res = await fetch(withBase('/auth/me'), { credentials: 'include' })
   } catch (cause) {
     throw new PanelRequestError(`session unreachable: ${String(cause)}`, 0)
   }

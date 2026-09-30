@@ -1,8 +1,7 @@
 import { createRoute, createRouter, redirect } from '@tanstack/react-router'
 import { lazy } from 'react'
-
+import { basePath } from '@/lib/basePath'
 import { handleAuthRedirect } from '@/lib/utils'
-
 import { rootRoute } from './root'
 
 const S3BucketPage = lazy(() => import('@/pages/objectStorage/s3Bucket'))
@@ -61,7 +60,7 @@ const routeTree = rootRoute.addChildren([
   BucketDetailRoute
 ])
 
-export const router = createRouter({ routeTree })
+export const router = createRouter({ routeTree, basepath: basePath || '/' })
 
 declare module '@tanstack/react-router' {
   interface Register {
