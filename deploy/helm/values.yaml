@@ -65,3 +65,9 @@ snapp-object-store:
       # Secret carrying:
       #   s3panel_oidc__client_secret   (omit for a public OIDC client)
       #   s3panel_oidc__cookie_key      (REQUIRED; openssl rand -base64 32)
+
+# Creates the object-store-gitlab-ci ServiceAccount and binds it to
+# registry-editor, so CI can push panel images into this namespace. The panel
+# does not need it to run.
+ciRegistryAccess:
+  enabled: true
