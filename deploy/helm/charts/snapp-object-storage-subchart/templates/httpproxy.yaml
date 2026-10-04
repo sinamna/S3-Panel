@@ -1,6 +1,14 @@
 {{- /* Off when the panel is served under another host's HTTPProxy, e.g. at a
        path prefix of IAM's console, which then routes to the Service instead. */}}
 {{- if and .Values.enabled .Values.httpproxy.enabled }}
+{{- /* pathPrefix serves the panel under a prefix of its own host, for an image
+       built with VITE_BASE_PATH set to it: the prefix is stripped before the
+       request reaches the panel, and "/" redirects to it. Empty serves the
+       panel at the root. */}}
+{{- $prefix := trimSuffix "/" (default "" .Values.httpproxy.pathPrefix) }}
+{{- /* CORS is on by default (the chart's historical behaviour) but a panel that
+       serves its own frontend is same-origin and needs none. */}}
+{{- $cors := dig "cors" "enabled" true .Values.httpproxy }}
 apiVersion: projectcontour.io/v1
 kind: HTTPProxy
 metadata:
@@ -12,6 +20,14 @@ spec:
   ingressClassName: private
   routes:
   - enableWebsockets: true
+    {{- if $prefix }}
+    conditions:
+    - prefix: {{ $prefix }}
+    pathRewritePolicy:
+      replacePrefix:
+      - prefix: {{ $prefix }}
+        replacement: /
+    {{- end }}
     loadBalancerPolicy:
       strategy: RoundRobin
     services:
@@ -21,8 +37,16 @@ spec:
     timeoutPolicy:
       idleConnection: 15s
       response: 30s
+  {{- if $prefix }}
+  - conditions:
+    - prefix: /
+    requestRedirectPolicy:
+      path: {{ $prefix }}/
+      statusCode: 302
+  {{- end }}
   virtualhost:
     fqdn: {{ .Values.fqdn }}
+    {{- if $cors }}
     corsPolicy:
         allowCredentials: true
         allowPrivateNetwork: true
@@ -40,6 +64,7 @@ spec:
           - Content-Length
           - Content-Range
         maxAge: "10m" # preflight requests can be cached for 10 minutes.
+    {{- end }}
     tls:
       enableFallbackCertificate: true
       secretName: openshift-ingress/letsencrypt

@@ -30,4 +30,12 @@ existingSecret: ""
 # Service, e.g. the panel served at a path prefix of IAM's console host.
 httpproxy:
   enabled: true
+  # Serve the panel under this prefix of its own host (e.g. "/s3-panel", for an
+  # image built with VITE_BASE_PATH=/s3-panel); "/" then redirects there. Empty
+  # serves it at the root.
+  pathPrefix: ""
+  cors:
+    # Permissive credentialed CORS for any origin. Not needed when the panel
+    # serves its own frontend (same origin); turn it off then.
+    enabled: true
 
