@@ -3,6 +3,7 @@ package control
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -101,11 +102,19 @@ func (c *Client) RealIsAdmin(ctx context.Context, token string) (bool, error) {
 		return false, &Error{Status: res.StatusCode, Message: strings.TrimSpace(string(body))}
 	}
 	var out struct {
-		RealIsAdmin *bool `json:"real_is_admin"`
-		IsAdmin     bool  `json:"is_admin"`
+		UserID      string `json:"user_id"`
+		Email       string `json:"email"`
+		RealIsAdmin *bool  `json:"real_is_admin"`
+		IsAdmin     bool   `json:"is_admin"`
 	}
 	if err := json.Unmarshal(body, &out); err != nil {
 		return false, fmt.Errorf("decode iam identity: %w", err)
+	}
+	// /auth/me is public: a token IAM does not accept still gets a 200, just
+	// anonymous and "not an admin". Reporting that as a verdict would silently
+	// strip a real admin, so it is an error and the caller falls back.
+	if out.UserID == "" && out.Email == "" {
+		return false, errors.New("iam did not recognise the token")
 	}
 	if out.RealIsAdmin != nil {
 		return *out.RealIsAdmin, nil

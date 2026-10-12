@@ -60,10 +60,10 @@ func TestRealIsAdmin(t *testing.T) {
 		body string
 		want bool
 	}{
-		{"real admin", `{"real_is_admin":true,"is_admin":false}`, true},
-		{"real non-admin wins over is_admin", `{"real_is_admin":false,"is_admin":true}`, false},
-		{"missing real_is_admin falls back to is_admin", `{"is_admin":true}`, true},
-		{"neither", `{"authenticated":true}`, false},
+		{"real admin", `{"user_id":"u1","real_is_admin":true,"is_admin":false}`, true},
+		{"real non-admin wins over is_admin", `{"email":"a@b.c","real_is_admin":false,"is_admin":true}`, false},
+		{"missing real_is_admin falls back to is_admin", `{"user_id":"u1","is_admin":true}`, true},
+		{"neither", `{"user_id":"u1","authenticated":true}`, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -89,6 +89,20 @@ func TestRealIsAdmin(t *testing.T) {
 func TestRealIsAdminErrorsOnNon200(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "nope", http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+	c, _ := New(srv.URL+"/s3", "", time.Second)
+
+	if got, err := c.RealIsAdmin(context.Background(), "tok"); err == nil || got {
+		t.Fatalf("RealIsAdmin = %v, %v; want an error", got, err)
+	}
+}
+
+// IAM's /auth/me is public: a token it cannot verify still gets a 200, just
+// anonymous (no user_id, no email) and "not an admin". That is not a verdict.
+func TestRealIsAdminRejectsAnAnonymousAnswer(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"is_admin":false,"real_is_admin":false}`))
 	}))
 	defer srv.Close()
 	c, _ := New(srv.URL+"/s3", "", time.Second)
