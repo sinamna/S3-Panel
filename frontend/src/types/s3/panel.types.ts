@@ -33,6 +33,21 @@ export interface IPanelSessionResponse {
   groups?: string[]
   /** Member of a configured admin group, so the admin view is offered. */
   is_admin?: boolean
+  /** Debug user being acted as (IAM proposal 008); empty when not acting. */
+  act_as?: string
+  /** Whether the real signed-in user is an admin, even while acting. */
+  real_is_admin?: boolean
+}
+
+export interface IActAsState {
+  available: boolean
+  acting?: string
+  candidates: {
+    email: string
+    username: string
+    first_name?: string
+    last_name?: string
+  }[]
 }
 
 /** One bucket in `iam` mode, with the caller's permissions attached. */

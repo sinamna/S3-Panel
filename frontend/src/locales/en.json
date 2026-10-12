@@ -224,5 +224,11 @@
   "all_regions": "All regions",
   "no_accessible_buckets": "You do not have access to any buckets yet. Ask a team admin to grant you access.",
   "read_only_panel": "Read-only",
-  "read_only_panel_hint": "This panel can browse and download, but cannot change anything in storage."
+  "read_only_panel_hint": "This panel can browse and download, but cannot change anything in storage.",
+  "act_as_debug_user": "Act as debug user",
+  "act_as_hint": "Admin, non-production: see the panel exactly as an IAM debug user does.",
+  "acting_as": "Acting as",
+  "acting_as_hint": "you see only what this debug user can reach, and credentials are minted for them.",
+  "stop_acting": "Stop acting",
+  "no_debug_users": "No debug users — create one in IAM"
 }

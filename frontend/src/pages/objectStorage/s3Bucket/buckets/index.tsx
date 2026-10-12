@@ -5,6 +5,7 @@ import { useEffectOnce } from 'react-use'
 import { fetchIAMBuckets } from '@/api/panel'
 import { fetchBucketsQuota } from '@/api/s3'
 import { bucketsKeys } from '@/api/s3Keys'
+import ActAsBar from '@/components/act-as-bar'
 import { AlertMessage } from '@/components/alert-message'
 import BucketCard from '@/components/bucket-card'
 import IAMBucketCard from '@/components/bucket-card/iam-bucket-card'
@@ -128,6 +129,8 @@ export default function Buckets() {
           </span>
         </div>
       ) : null}
+
+      {isIAMMode ? <ActAsBar /> : null}
 
       {isIAMMode && isAdmin ? (
         <div
