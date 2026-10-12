@@ -99,6 +99,7 @@ func (s *Server) registerIAMMode(ctx context.Context) error {
 		return fmt.Errorf("iam auth mode: %w", err)
 	}
 	s.control = controlClient.WithSTSClientKey(s.Config.ObjectStorage.STSClientKey)
+	s.control = s.control.WithAPIURL(s.Config.ObjectStorage.IAMAPIURL)
 
 	// Signing out revokes the storage credentials this console obtained on the
 	// person's behalf. Without it, logout leaves a real credential live for

@@ -26,6 +26,7 @@ import (
 type Client struct {
 	baseURL string
 	stsURL  string
+	apiURL  string
 	// stsClientKey identifies this panel to the control endpoint's STS surface.
 	// Empty when that endpoint requires none.
 	stsClientKey string
@@ -65,7 +66,7 @@ func New(baseURL, stsURL string, timeout time.Duration) (*Client, error) {
 		stsURL = deriveSTSURL(baseURL)
 	}
 
-	return &Client{baseURL: baseURL, stsURL: stsURL, http: &http.Client{Timeout: timeout}}, nil
+	return &Client{baseURL: baseURL, stsURL: stsURL, apiURL: deriveAPIURL(baseURL), http: &http.Client{Timeout: timeout}}, nil
 }
 
 // deriveSTSURL swaps the last path segment for "sts", which is the layout the
@@ -360,6 +361,7 @@ func (c *Client) do(ctx context.Context, method, token, path string, body io.Rea
 }
 
 func (c *Client) send(req *http.Request) ([]byte, error) {
+	applyActAs(req)
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("call control endpoint: %w", err)
@@ -407,6 +409,7 @@ func (c *Client) RevokeSessions(ctx context.Context, token, region, client strin
 		return err
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
+	applyActAs(req)
 	if c.stsClientKey != "" {
 		req.Header.Set(stsClientHeader, c.stsClientKey)
 	}

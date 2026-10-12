@@ -98,6 +98,9 @@ type ObjectStorageConfig struct {
 	// `aws sts get-session-token`, which would hand them an account-wide
 	// credential to keep. Leave empty when the control endpoint requires none.
 	STSClientKey string `json:"sts_client_key" koanf:"sts_client_key"`
+	// IAMAPIURL is IAM's JSON API base, used to list debug users an admin may
+	// act as. Defaults to control_url's sibling "/api".
+	IAMAPIURL string `json:"iam_api_url" koanf:"iam_api_url"`
 }
 
 // OIDCConfig configures the browser login flow used in AuthModeIAM.
