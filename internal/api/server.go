@@ -110,11 +110,17 @@ func (s *Server) registerIAMMode(ctx context.Context) error {
 	// break a terminal somewhere else.
 	if s.auth != nil {
 		s.auth.OnLogout = func(ctx context.Context, session auth.Session) {
-			if err := s.control.RevokeSessions(ctx, session.AccessToken, s.Config.Server.Region, "console"); err != nil {
-				// Best effort: a failed revoke must not stop the person signing
-				// out, and the credential still expires on its own.
-				s.logger.Warn("could not revoke storage credentials on sign-out",
-					zap.String("subject", session.Subject), zap.Error(err))
+			// Best effort: a failed revoke must not stop the person signing
+			// out, and the credential still expires on its own.
+			revoke := func(ctx context.Context, who string) {
+				if err := s.control.RevokeSessions(ctx, session.AccessToken, s.Config.Server.Region, "console"); err != nil {
+					s.logger.Warn("could not revoke storage credentials on sign-out",
+						zap.String("subject", session.Subject), zap.String("as", who), zap.Error(err))
+				}
+			}
+			revoke(control.WithActAs(ctx, ""), "self")
+			if session.ActAs != "" {
+				revoke(control.WithActAs(ctx, session.ActAs), session.ActAs)
 			}
 		}
 	}
@@ -221,7 +227,7 @@ func (s *Server) registerAPIGroup(prefix string) {
 	// API group, which is what makes a route added later fail CLOSED: it gets no
 	// credential rather than the caller's. A no-op in s3 mode, where those
 	// headers are how the user supplies the credentials the panel must use.
-	apiRoutes := s.Router.Group(prefix, s.CORSMiddleware(), guard, s.stripClientCredentials())
+	apiRoutes := s.Router.Group(prefix, s.CORSMiddleware(), guard, s.actAsContext(), s.stripClientCredentials())
 
 	// A single gate in front of everything that could change the storage
 	// backend. It outranks the permission checks below on purpose: holding
@@ -234,6 +240,12 @@ func (s *Server) registerAPIGroup(prefix string) {
 
 	// /regions is always answered locally (it advertises this instance's config).
 	apiRoutes.GET("/regions", s.HandleRegions())
+
+	if s.Config.Server.IsIAMMode() {
+		apiRoutes.GET("/act-as", s.handleActAsGet())
+		apiRoutes.POST("/act-as", s.handleActAsSet())
+		apiRoutes.DELETE("/act-as", s.handleActAsClear())
+	}
 
 	// Data routes are region-aware: a "region" header for a remote region is
 	// reverse-proxied to that region's backend.

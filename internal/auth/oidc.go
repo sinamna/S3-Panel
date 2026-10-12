@@ -205,6 +205,8 @@ func (a *Authenticator) Me(c echo.Context) error {
 		"name":          session.Display(),
 		"groups":        session.Groups,
 		"is_admin":      session.IsAdmin(a.cfg.AdminGroups),
+		"real_is_admin": session.IsRealAdmin(a.cfg.AdminGroups),
+		"act_as":        session.ActAs,
 	})
 }
 

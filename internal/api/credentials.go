@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -173,7 +174,7 @@ func (s *Server) injectObjectCredentials() echo.MiddlewareFunc {
 			// caches a read-only credential, and without it the next upload to the
 			// same bucket would reuse that credential and be refused by the
 			// gateway.
-			key := session.Subject + "|" + region + "|" + bucket + "|" + access
+			key := identityKey(session) + "|" + region + "|" + bucket + "|" + access
 
 			cred, hit := s.credentials.get(key)
 			if !hit {
@@ -275,4 +276,17 @@ func controlError(err error, fallback string) error {
 		}
 	}
 	return echo.NewHTTPError(http.StatusBadGateway, fallback)
+}
+
+// dropIdentity removes every credential cached for one identity, so switching
+// who you act as can never reuse the previous identity's credential.
+func (c *credentialCache) dropIdentity(identity string) {
+	prefix := identity + "|"
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for key := range c.items {
+		if strings.HasPrefix(key, prefix) {
+			delete(c.items, key)
+		}
+	}
 }
