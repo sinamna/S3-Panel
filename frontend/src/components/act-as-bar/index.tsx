@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronDown, UserRoundSearch } from 'lucide-react'
+import { useState } from 'react'
 
 import { clearActAs, fetchActAs, setActAs } from '@/api/panel'
 import { Button } from '@/components/shadcn/button'
@@ -9,8 +10,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger
 } from '@/components/shadcn/dropdown-menu'
+import { useToast } from '@/hooks/use-toast'
 import usePanelSession from '@/hooks/usePanelSession'
 import { t } from '@/i18n'
+import type { HTTPClientError } from '@/services/http/interceptorsConfig'
 
 /**
  * Lets an admin act as an IAM debug user (IAM proposal 008), and shows a
@@ -19,16 +22,36 @@ import { t } from '@/i18n'
 const ActAsBar = () => {
   const queryClient = useQueryClient()
   const bootstrap = usePanelSession(s => s.bootstrap)
+  const { toast } = useToast()
+  const [pending, setPending] = useState(false)
   const { data } = useQuery({ queryKey: ['act-as'], queryFn: fetchActAs })
 
   if (!data?.available) return null
 
   const switchTo = async (email: string | null) => {
-    if (email) await setActAs(email)
-    else await clearActAs()
-    // Everything on screen was fetched as the previous identity.
-    await queryClient.invalidateQueries()
-    await bootstrap()
+    setPending(true)
+    try {
+      if (email) await setActAs(email)
+      else await clearActAs()
+    } catch (err) {
+      toast({
+        variant: 'destructive',
+        title:
+          (err as HTTPClientError<{ message?: string }>).response?.data
+            ?.message || t('act_as_failed')
+      })
+    } finally {
+      // Runs after any attempt, so a failed switch or a failed refresh cannot
+      // leave the screen on the previous identity. Session first, so the
+      // refetched lists see the new identity rather than the old one.
+      try {
+        await bootstrap()
+        // Everything on screen was fetched as the previous identity.
+        await queryClient.invalidateQueries()
+      } finally {
+        setPending(false)
+      }
+    }
   }
 
   return (
@@ -41,7 +64,12 @@ const ActAsBar = () => {
       <div className="flex gap-2">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" className="gap-1">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1"
+              disabled={pending}
+            >
               <UserRoundSearch className="size-4" />
               {t('act_as_debug_user')}
               <ChevronDown className="size-3" />
@@ -56,6 +84,7 @@ const ActAsBar = () => {
               data.candidates.map(u => (
                 <DropdownMenuItem
                   key={u.email}
+                  disabled={pending}
                   onSelect={() => void switchTo(u.email)}
                 >
                   {u.email}
@@ -65,7 +94,12 @@ const ActAsBar = () => {
           </DropdownMenuContent>
         </DropdownMenu>
         {data.acting ? (
-          <Button size="sm" variant="ghost" onClick={() => void switchTo(null)}>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={pending}
+            onClick={() => void switchTo(null)}
+          >
             {t('stop_acting')}
           </Button>
         ) : null}
