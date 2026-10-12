@@ -210,6 +210,8 @@
   "bucket_permissions": "Permissions",
   "granted_via_team": "via team {team}",
   "bucket_detail": "Bucket detail",
+  "manage_access": "Manage access",
+  "manage_access_hint": "Open this bucket in IAM to see and change who has access",
   "bucket_policy": "Bucket policy",
   "no_bucket_policy": "This bucket has no policy attached.",
   "bucket_policy_denied": "You do not have permission to read this bucket's policy.",

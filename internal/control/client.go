@@ -91,6 +91,10 @@ type Bucket struct {
 	S3Name         string    `xml:"S3Name"`
 	Permissions    []string  `xml:"Permissions>Permission"`
 	GrantedViaTeam string    `xml:"GrantedViaTeam"`
+	// ResourceID is the bucket's IAM resource ID ("<service>|bucket|<name>"),
+	// which addresses its page in the IAM console. Empty from an endpoint that
+	// does not report it.
+	ResourceID string `xml:"ResourceID"`
 }
 
 // DisplayName is what a user should see: the bare bucket name when the endpoint

@@ -36,6 +36,9 @@ type IAMBucketItem struct {
 	CanRead    bool   `json:"can_read"`
 	CanWrite   bool   `json:"can_write"`
 	CanDelete  bool   `json:"can_delete"`
+	// ResourceID is the bucket's IAM resource ID, for linking to its page in the
+	// IAM console. Empty when the control endpoint does not report one.
+	ResourceID string `json:"resource_id,omitempty"`
 }
 
 // IAMBucketListResponse is the AuthModeIAM bucket listing. It spans every region
@@ -203,6 +206,7 @@ func newIAMBucketItem(b control.Bucket) IAMBucketItem {
 		Bucket:      b.Name,
 		DisplayName: b.DisplayName(),
 		S3Name:      b.S3Name,
+		ResourceID:  b.ResourceID,
 		Tenant:      b.Tenant,
 		Region:      b.BucketRegion,
 		Permissions: b.Permissions,

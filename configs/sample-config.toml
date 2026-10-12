@@ -25,6 +25,11 @@ auth_token = "XXX"
 
 serve_frontend = true
 
+# auth_mode = "iam" only: the browser-facing address of the IAM console. When
+# set, each bucket card links to that bucket's page there, to manage who has
+# access. Leave unset to hide the link.
+# iam_console_url = "https://iam.example.com"
+
 # The region this instance serves directly. Requests whose "region" header names
 # another region are reverse-proxied to that region's backend.
 # region = "teh-1"

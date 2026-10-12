@@ -14,6 +14,8 @@ interface IPanelSessionStore {
   loginUrl: string
   /** Server refuses every mutating operation; hide the controls. */
   readOnly: boolean
+  /** Where bucket cards link to manage access; empty hides the link. */
+  iamConsoleUrl: string
   session: IPanelSessionResponse | null
   loading: boolean
   /** Set when bootstrap could not reach the server; null once it succeeds. */
@@ -50,6 +52,7 @@ const usePanelSession = create<IPanelSessionStore>((set, get) => ({
   authMode: null,
   loginUrl: '',
   readOnly: false,
+  iamConsoleUrl: '',
   session: null,
   loading: false,
   bootstrapError: null,
@@ -68,6 +71,7 @@ const usePanelSession = create<IPanelSessionStore>((set, get) => ({
             authMode: config.auth_mode,
             loginUrl: config.login_url ?? '',
             readOnly: config.read_only === true,
+            iamConsoleUrl: '',
             session: null,
             bootstrapError: null
           })
@@ -87,6 +91,7 @@ const usePanelSession = create<IPanelSessionStore>((set, get) => ({
           authMode: config.auth_mode,
           loginUrl: config.login_url ?? '',
           readOnly: config.read_only === true,
+          iamConsoleUrl: config.iam_console_url ?? '',
           session,
           bootstrapError: null
         })
@@ -105,6 +110,7 @@ const usePanelSession = create<IPanelSessionStore>((set, get) => ({
             authMode: 's3',
             loginUrl: '',
             readOnly: false,
+            iamConsoleUrl: '',
             session: null,
             bootstrapError: null
           })

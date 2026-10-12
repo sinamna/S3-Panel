@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/labstack/echo/v4"
 
@@ -24,6 +25,9 @@ type ConfigResponse struct {
 	// ReadOnly reports that every mutating operation is refused, so the UI can
 	// hide the controls rather than offer actions that will 403.
 	ReadOnly bool `json:"read_only"`
+	// IAMConsoleURL is where bucket cards link to manage access. Only reported
+	// in iam mode, and empty when the deployment has not configured it.
+	IAMConsoleURL string `json:"iam_console_url,omitempty"`
 }
 
 // HandleConfig serves GET /config.
@@ -46,6 +50,7 @@ func (s *Server) HandleConfig() echo.HandlerFunc {
 		}
 		if s.Config.Server.IsIAMMode() {
 			resp.LoginURL = "/auth/login"
+			resp.IAMConsoleURL = strings.TrimRight(s.Config.Server.IAMConsoleURL, "/")
 		}
 		return c.JSON(http.StatusOK, resp)
 	}

@@ -54,6 +54,11 @@ type ServerConfig struct {
 	// When the frontend is served, a request for one of these regions is
 	// reverse-proxied to that backend. Only meaningful on a frontend instance.
 	RegionEndpoints map[string]string `json:"region_endpoints" koanf:"region_endpoints"`
+	// IAMConsoleURL is the browser-facing address of the IAM console, e.g.
+	// "https://iam.example.com". When set, iam mode links each bucket to its
+	// page there. It is not derived from the control URL, which may be an
+	// in-cluster address a browser cannot reach.
+	IAMConsoleURL string `json:"iam_console_url" koanf:"iam_console_url"`
 }
 
 // IsIAMMode reports whether the panel authenticates users with OIDC rather than

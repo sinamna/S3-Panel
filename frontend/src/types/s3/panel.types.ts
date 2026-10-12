@@ -18,6 +18,11 @@ export interface IPanelConfigResponse {
    * rather than offering actions that will 403.
    */
   read_only?: boolean
+  /**
+   * Browser-facing address of the IAM console, in `iam` mode, when configured.
+   * Bucket cards link to each bucket's page there to manage access.
+   */
+  iam_console_url?: string
 }
 
 export interface IPanelSessionResponse {
@@ -36,6 +41,8 @@ export interface IIAMBucket {
   display_name: string
   /** How the gateway addresses this bucket, which for a tenanted bucket differs from `bucket`. */
   s3_name?: string
+  /** The bucket's IAM resource ID, which addresses its page in the IAM console. */
+  resource_id?: string
   tenant?: string
   region?: string
   permissions: string[]
