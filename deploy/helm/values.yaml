@@ -47,6 +47,10 @@ snapp-object-store:
     # Where short-lived object credentials come from (STS GetSessionToken).
     # Defaults to control_url with its last path segment replaced by "sts".
     sts_url: ""
+    # IAM's JSON API, used to list the debug users an admin may act as.
+    # Defaults to control_url's sibling "/api" (its last path segment replaced
+    # by "api"). Empty keeps the default.
+    iam_api_url: ""
     # The browser-facing address of the IAM console. When set, each bucket card
     # links to that bucket's page there, to manage who has access. Not derived
     # from control_url, which may be an in-cluster address. Empty hides the link.

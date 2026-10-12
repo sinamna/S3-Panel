@@ -41,6 +41,9 @@ data:
 {{- if .Values.config.sts_url }}
     sts_url = {{ .Values.config.sts_url | quote }}
 {{- end }}
+{{- if .Values.config.iam_api_url }}
+    iam_api_url = {{ .Values.config.iam_api_url | quote }}
+{{- end }}
 {{- if eq (.Values.config.auth_mode | default "s3") "iam" }}
 
     [oidc]

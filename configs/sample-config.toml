@@ -53,6 +53,11 @@ secret_key = ""
 # Where short-lived object credentials come from (AWS STS GetSessionToken).
 # Defaults to control_url with its last path segment replaced by "sts".
 # sts_url = "https://iam.example.com/sts"
+#
+# IAM's JSON API, used to list the debug users an admin may act as (non-
+# production IAM only). Defaults to control_url's sibling "/api", i.e.
+# control_url with its last path segment replaced by "api".
+# iam_api_url = "https://iam.example.com/api"
 
 # --- auth_mode = "iam" only -------------------------------------------------
 # [oidc]
