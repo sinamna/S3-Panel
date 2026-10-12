@@ -51,8 +51,12 @@ func (s *Server) candidates(c echo.Context, session auth.Session) ([]control.Deb
 	users, err := s.control.ListDebugUsers(c.Request().Context(), session.AccessToken)
 	if err != nil {
 		var ce *control.Error
-		if !errors.As(err, &ce) {
-			s.logger.Warn("could not list debug users", zap.Error(err))
+		if !errors.As(err, &ce) || (ce.Status != http.StatusUnauthorized && ce.Status != http.StatusForbidden) {
+			fields := []zap.Field{zap.Error(err)}
+			if ce != nil {
+				fields = append(fields, zap.Int("status", ce.Status))
+			}
+			s.logger.Warn("could not list debug users", fields...)
 		}
 		return nil, false
 	}
@@ -94,6 +98,9 @@ func (s *Server) handleActAsSet() echo.HandlerFunc {
 		if target == "" {
 			return echo.NewHTTPError(http.StatusForbidden, "not a debug user")
 		}
+		if strings.EqualFold(target, session.ActAs) {
+			return c.NoContent(http.StatusNoContent)
+		}
 		return s.switchIdentity(c, session, target)
 	}
 }
@@ -102,18 +109,22 @@ func (s *Server) handleActAsSet() echo.HandlerFunc {
 func (s *Server) handleActAsClear() echo.HandlerFunc {
 	return func(c echo.Context) error {
 		session, _ := auth.SessionFrom(c)
+		if session.ActAs == "" {
+			return c.NoContent(http.StatusNoContent)
+		}
 		return s.switchIdentity(c, session, "")
 	}
 }
 
-// switchIdentity leaves the current identity — revoking the console
-// credentials it holds and dropping them from the cache — and saves the new
-// choice in the session cookie.
+// switchIdentity leaves the current identity — dropping the credentials this
+// panel cached for it — and saves the new choice in the session cookie.
+//
+// It deliberately does NOT ask IAM to revoke anything. Those credentials never
+// leave the panel (no route hands a storage credential to the browser) and
+// expire within the panel's credential TTL, whereas IAM revokes per effective
+// principal: revoking a debug user's credentials would also kill the ones other
+// admins hold for the same shared debug user.
 func (s *Server) switchIdentity(c echo.Context, session auth.Session, target string) error {
-	ctx := control.WithActAs(c.Request().Context(), session.ActAs)
-	if err := s.control.RevokeSessions(ctx, session.AccessToken, s.Config.Server.Region, "console"); err != nil {
-		s.logger.Warn("could not revoke credentials while switching identity", zap.Error(err))
-	}
 	s.credentials.dropIdentity(identityKey(session))
 	session.ActAs = target
 	if err := s.auth.Save(c, session); err != nil {

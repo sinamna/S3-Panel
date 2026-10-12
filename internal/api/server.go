@@ -112,16 +112,16 @@ func (s *Server) registerIAMMode(ctx context.Context) error {
 		s.auth.OnLogout = func(ctx context.Context, session auth.Session) {
 			// Best effort: a failed revoke must not stop the person signing
 			// out, and the credential still expires on its own.
-			revoke := func(ctx context.Context, who string) {
-				if err := s.control.RevokeSessions(ctx, session.AccessToken, s.Config.Server.Region, "console"); err != nil {
-					s.logger.Warn("could not revoke storage credentials on sign-out",
-						zap.String("subject", session.Subject), zap.String("as", who), zap.Error(err))
-				}
+			//
+			// Only the person's OWN credentials are revoked (act-as cleared).
+			// IAM revokes per effective principal, so revoking while acting
+			// would kill other admins' credentials for the same debug user.
+			if err := s.control.RevokeSessions(control.WithActAs(ctx, ""), session.AccessToken, s.Config.Server.Region, "console"); err != nil {
+				s.logger.Warn("could not revoke storage credentials on sign-out",
+					zap.String("subject", session.Subject), zap.Error(err))
 			}
-			revoke(control.WithActAs(ctx, ""), "self")
-			if session.ActAs != "" {
-				revoke(control.WithActAs(ctx, session.ActAs), session.ActAs)
-			}
+			// The prefix also covers this session's acting entries.
+			s.credentials.dropIdentity(session.Subject)
 		}
 	}
 	s.credentials = newCredentialCache(ctx)
