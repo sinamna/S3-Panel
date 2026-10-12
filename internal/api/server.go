@@ -109,6 +109,10 @@ func (s *Server) registerIAMMode(ctx context.Context) error {
 	// shell keeps its own lifetime, because closing a browser tab should not
 	// break a terminal somewhere else.
 	if s.auth != nil {
+		// Admin is IAM's call: unified-panel tokens carry no groups claim, and
+		// IAM falls back to the groups it synced into its own database.
+		s.auth.Logger = s.logger
+		s.auth.ResolveAdmin = s.control.RealIsAdmin
 		s.auth.OnLogout = func(ctx context.Context, session auth.Session) {
 			// Best effort: a failed revoke must not stop the person signing
 			// out, and the credential still expires on its own.

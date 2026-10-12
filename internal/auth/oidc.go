@@ -11,6 +11,7 @@ import (
 
 	oidc "github.com/coreos/go-oidc/v3/oidc"
 	"github.com/labstack/echo/v4"
+	"go.uber.org/zap"
 	"golang.org/x/oauth2"
 
 	"github.com/snapp-incubator/S3-Panel/internal/config"
@@ -39,6 +40,13 @@ type Authenticator struct {
 	// is about to end. The server uses it to revoke the storage credentials this
 	// console obtained for the person; left nil, logout just clears the cookie.
 	OnLogout func(context.Context, Session)
+
+	// ResolveAdmin asks IAM whether the person holding an access token is an
+	// admin. The server sets it in iam mode; left nil (or failing) the session
+	// keeps no IAM answer and admin falls back to the token's groups claim.
+	ResolveAdmin func(ctx context.Context, accessToken string) (bool, error)
+	// Logger reports a failed ResolveAdmin; nil is silent.
+	Logger *zap.Logger
 
 	// Collapses concurrent and near-concurrent access-token refreshes, so one
 	// refresh token is never redeemed twice. See refreshShared.
@@ -161,6 +169,7 @@ func (a *Authenticator) Callback(c echo.Context) error {
 	if err != nil {
 		return echo.NewHTTPError(http.StatusUnauthorized, err.Error())
 	}
+	session = a.withIAMAdmin(ctx, session)
 	if err := a.Save(c, session); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "could not persist the session")
 	}
@@ -266,7 +275,30 @@ func (a *Authenticator) refresh(ctx context.Context, prior Session) (Session, er
 		// the next refresh.
 		next.RefreshToken = token.RefreshToken
 	}
-	return next, nil
+	// The person's groups may have changed since sign-in; the new token is the
+	// moment to ask IAM again.
+	return a.withIAMAdmin(ctx, next), nil
+}
+
+// withIAMAdmin records IAM's verdict on whether the session's person is an admin.
+//
+// A failed lookup must not sign anyone out or lock an admin out: it leaves
+// whatever the session already knew (nothing at sign-in, so admin falls back to
+// the groups claim; the previous answer on a refresh).
+func (a *Authenticator) withIAMAdmin(ctx context.Context, s Session) Session {
+	if a.ResolveAdmin == nil {
+		return s
+	}
+	admin, err := a.ResolveAdmin(ctx, s.AccessToken)
+	if err != nil {
+		if a.Logger != nil {
+			a.Logger.Warn("could not ask IAM whether the person is an admin",
+				zap.String("subject", s.Subject), zap.Error(err))
+		}
+		return s
+	}
+	s.IAMAdmin = &admin
+	return s
 }
 
 // Save seals a session into the cookie.

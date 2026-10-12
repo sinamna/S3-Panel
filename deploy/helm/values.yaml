@@ -64,7 +64,8 @@ snapp-object-store:
       cookie_secure: true
       groups_claim: "groups"
       # Groups whose members get the admin view. The control endpoint still
-      # decides what they may actually see.
+      # decides what they may actually see. Only a fallback: IAM's answer to
+      # "is this person an admin" wins when the panel can ask it.
       admin_groups: []
       scopes: []
       post_login_redirect: "/"

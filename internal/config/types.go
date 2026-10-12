@@ -124,6 +124,8 @@ type OIDCConfig struct {
 	GroupsClaim string `json:"groups_claim" koanf:"groups_claim"`
 	// AdminGroups are the groups whose members get the panel's admin view. The
 	// control endpoint still decides what they may see; this only reveals the UI.
+	// In iam mode this is only the FALLBACK: IAM's own verdict wins whenever the
+	// panel could ask it, and a token without a groups claim never matches.
 	AdminGroups []string `json:"admin_groups" koanf:"admin_groups"`
 	// PostLoginRedirect is where the browser lands after a successful login.
 	PostLoginRedirect string `json:"post_login_redirect" koanf:"post_login_redirect"`

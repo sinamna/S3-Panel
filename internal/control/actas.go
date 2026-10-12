@@ -78,6 +78,41 @@ func (c *Client) ListDebugUsers(ctx context.Context, token string) ([]DebugUser,
 	return out.DebugUsers, nil
 }
 
+// RealIsAdmin asks IAM whether the signed-in person is an admin. IAM is the
+// authority because it falls back to the Keycloak groups it synced into its own
+// database, while the unified-panel client's tokens carry no groups claim for
+// the panel to judge by itself.
+//
+// It always answers for the REAL person (act-as cleared), and reads
+// real_is_admin; is_admin is only a fallback for an IAM that predates the field.
+func (c *Client) RealIsAdmin(ctx context.Context, token string) (bool, error) {
+	req, err := http.NewRequestWithContext(WithActAs(ctx, ""), http.MethodGet, c.apiURL+"/auth/me", nil)
+	if err != nil {
+		return false, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	res, err := c.http.Do(req)
+	if err != nil {
+		return false, fmt.Errorf("ask iam who am i: %w", err)
+	}
+	defer res.Body.Close() //nolint:errcheck // response consumed below
+	body, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+	if res.StatusCode != http.StatusOK {
+		return false, &Error{Status: res.StatusCode, Message: strings.TrimSpace(string(body))}
+	}
+	var out struct {
+		RealIsAdmin *bool `json:"real_is_admin"`
+		IsAdmin     bool  `json:"is_admin"`
+	}
+	if err := json.Unmarshal(body, &out); err != nil {
+		return false, fmt.Errorf("decode iam identity: %w", err)
+	}
+	if out.RealIsAdmin != nil {
+		return *out.RealIsAdmin, nil
+	}
+	return out.IsAdmin, nil
+}
+
 func deriveAPIURL(baseURL string) string {
 	if idx := strings.LastIndex(baseURL, "/"); idx > len("https:/") {
 		return baseURL[:idx] + "/api"

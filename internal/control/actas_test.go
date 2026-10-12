@@ -53,3 +53,47 @@ func TestListDebugUsersNeverActs(t *testing.T) {
 		t.Fatalf("ListDebugUsers = %+v, %v", users, err)
 	}
 }
+
+func TestRealIsAdmin(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{"real admin", `{"real_is_admin":true,"is_admin":false}`, true},
+		{"real non-admin wins over is_admin", `{"real_is_admin":false,"is_admin":true}`, false},
+		{"missing real_is_admin falls back to is_admin", `{"is_admin":true}`, true},
+		{"neither", `{"authenticated":true}`, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/api/auth/me" || r.Header.Get(ActAsHeader) != "" || r.Header.Get("Authorization") != "Bearer tok" {
+					http.Error(w, "unexpected "+r.URL.Path, http.StatusBadRequest)
+					return
+				}
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			defer srv.Close()
+			c, _ := New(srv.URL+"/s3", "", time.Second)
+
+			// Acting as someone must not leak into the question.
+			got, err := c.RealIsAdmin(WithActAs(context.Background(), "someone@debug.iam.local"), "tok")
+			if err != nil || got != tc.want {
+				t.Fatalf("RealIsAdmin = %v, %v; want %v", got, err, tc.want)
+			}
+		})
+	}
+}
+
+func TestRealIsAdminErrorsOnNon200(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "nope", http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+	c, _ := New(srv.URL+"/s3", "", time.Second)
+
+	if got, err := c.RealIsAdmin(context.Background(), "tok"); err == nil || got {
+		t.Fatalf("RealIsAdmin = %v, %v; want an error", got, err)
+	}
+}
