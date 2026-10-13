@@ -20,6 +20,9 @@ data:
     download_path = {{ .Values.config.download_path | default "/tmp" | quote }}
     serve_frontend = {{ dig "serve_frontend" true .Values.config }}
     region = {{ .Values.config.region | default "" | quote }}
+{{- with .Values.config.iam_console_url }}
+    iam_console_url = {{ . | quote }}
+{{- end }}
 {{- with .Values.config.region_endpoints }}
 
     [server.region_endpoints]
@@ -37,6 +40,9 @@ data:
 {{- end }}
 {{- if .Values.config.sts_url }}
     sts_url = {{ .Values.config.sts_url | quote }}
+{{- end }}
+{{- if .Values.config.iam_api_url }}
+    iam_api_url = {{ .Values.config.iam_api_url | quote }}
 {{- end }}
 {{- if eq (.Values.config.auth_mode | default "s3") "iam" }}
 

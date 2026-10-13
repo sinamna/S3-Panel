@@ -1,3 +1,7 @@
+{{- /* The GitLab CI identity that pushes panel images into this namespace's
+       registry. Not needed to RUN the panel; disable it where images come
+       from elsewhere so the namespace does not carry an unused push grant. */}}
+{{- if .Values.ciRegistryAccess.enabled }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
@@ -13,3 +17,4 @@ subjects:
   - kind: ServiceAccount
     name: object-store-gitlab-ci
     namespace: {{ .Release.Namespace }}
+{{- end }}

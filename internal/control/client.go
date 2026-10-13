@@ -26,6 +26,7 @@ import (
 type Client struct {
 	baseURL string
 	stsURL  string
+	apiURL  string
 	// stsClientKey identifies this panel to the control endpoint's STS surface.
 	// Empty when that endpoint requires none.
 	stsClientKey string
@@ -65,7 +66,7 @@ func New(baseURL, stsURL string, timeout time.Duration) (*Client, error) {
 		stsURL = deriveSTSURL(baseURL)
 	}
 
-	return &Client{baseURL: baseURL, stsURL: stsURL, http: &http.Client{Timeout: timeout}}, nil
+	return &Client{baseURL: baseURL, stsURL: stsURL, apiURL: deriveAPIURL(baseURL), http: &http.Client{Timeout: timeout}}, nil
 }
 
 // deriveSTSURL swaps the last path segment for "sts", which is the layout the
@@ -91,6 +92,10 @@ type Bucket struct {
 	S3Name         string    `xml:"S3Name"`
 	Permissions    []string  `xml:"Permissions>Permission"`
 	GrantedViaTeam string    `xml:"GrantedViaTeam"`
+	// ResourceID is the bucket's IAM resource ID ("<service>|bucket|<name>"),
+	// which addresses its page in the IAM console. Empty from an endpoint that
+	// does not report it.
+	ResourceID string `xml:"ResourceID"`
 }
 
 // DisplayName is what a user should see: the bare bucket name when the endpoint
@@ -356,6 +361,7 @@ func (c *Client) do(ctx context.Context, method, token, path string, body io.Rea
 }
 
 func (c *Client) send(req *http.Request) ([]byte, error) {
+	applyActAs(req)
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("call control endpoint: %w", err)
@@ -384,4 +390,37 @@ func asError(err error, target **Error) bool {
 		return true
 	}
 	return false
+}
+
+// RevokeSessions asks the control endpoint to drop the credentials it issued to
+// one front end for the signed-in person.
+//
+// The subject is never sent: the endpoint uses the authenticated principal, so
+// this cannot be pointed at anybody else. client is passed explicitly because
+// the default there is "console" and the caller should be deliberate about it —
+// sending "" would revoke a shell credential too.
+func (c *Client) RevokeSessions(ctx context.Context, token, region, client string) error {
+	u := c.stsURL + "/logout?client=" + url.QueryEscape(client)
+	if region != "" {
+		u += "&region=" + url.QueryEscape(region)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	applyActAs(req)
+	if c.stsClientKey != "" {
+		req.Header.Set(stsClientHeader, c.stsClientKey)
+	}
+	res, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close() //nolint:errcheck // response discarded
+	if res.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(res.Body, 2048))
+		return fmt.Errorf("revoke sessions: status %d: %s", res.StatusCode, strings.TrimSpace(string(body)))
+	}
+	return nil
 }

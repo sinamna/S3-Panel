@@ -99,6 +99,35 @@ func (s *Server) registerIAMMode(ctx context.Context) error {
 		return fmt.Errorf("iam auth mode: %w", err)
 	}
 	s.control = controlClient.WithSTSClientKey(s.Config.ObjectStorage.STSClientKey)
+	s.control = s.control.WithAPIURL(s.Config.ObjectStorage.IAMAPIURL)
+
+	// Signing out revokes the storage credentials this console obtained on the
+	// person's behalf. Without it, logout leaves a real credential live for
+	// hours, usable from anywhere, that the browser no longer shows anyone.
+	//
+	// "console" is passed explicitly: a credential the same person took to a
+	// shell keeps its own lifetime, because closing a browser tab should not
+	// break a terminal somewhere else.
+	if s.auth != nil {
+		// Admin is IAM's call: unified-panel tokens carry no groups claim, and
+		// IAM falls back to the groups it synced into its own database.
+		s.auth.Logger = s.logger
+		s.auth.ResolveAdmin = s.control.RealIsAdmin
+		s.auth.OnLogout = func(ctx context.Context, session auth.Session) {
+			// Best effort: a failed revoke must not stop the person signing
+			// out, and the credential still expires on its own.
+			//
+			// Only the person's OWN credentials are revoked (act-as cleared).
+			// IAM revokes per effective principal, so revoking while acting
+			// would kill other admins' credentials for the same debug user.
+			if err := s.control.RevokeSessions(control.WithActAs(ctx, ""), session.AccessToken, s.Config.Server.Region, "console"); err != nil {
+				s.logger.Warn("could not revoke storage credentials on sign-out",
+					zap.String("subject", session.Subject), zap.Error(err))
+			}
+			// The prefix also covers this session's acting entries.
+			s.credentials.dropIdentity(session.Subject)
+		}
+	}
 	s.credentials = newCredentialCache(ctx)
 
 	return nil
@@ -202,7 +231,7 @@ func (s *Server) registerAPIGroup(prefix string) {
 	// API group, which is what makes a route added later fail CLOSED: it gets no
 	// credential rather than the caller's. A no-op in s3 mode, where those
 	// headers are how the user supplies the credentials the panel must use.
-	apiRoutes := s.Router.Group(prefix, s.CORSMiddleware(), guard, s.stripClientCredentials())
+	apiRoutes := s.Router.Group(prefix, s.CORSMiddleware(), guard, s.actAsContext(), s.stripClientCredentials())
 
 	// A single gate in front of everything that could change the storage
 	// backend. It outranks the permission checks below on purpose: holding
@@ -216,9 +245,21 @@ func (s *Server) registerAPIGroup(prefix string) {
 	// /regions is always answered locally (it advertises this instance's config).
 	apiRoutes.GET("/regions", s.HandleRegions())
 
+	if s.Config.Server.IsIAMMode() {
+		apiRoutes.GET("/act-as", s.handleActAsGet())
+		apiRoutes.POST("/act-as", s.handleActAsSet())
+		apiRoutes.DELETE("/act-as", s.handleActAsClear())
+	}
+
 	// Data routes are region-aware: a "region" header for a remote region is
 	// reverse-proxied to that region's backend.
 	region := s.regionRouter()
+
+	// There is deliberately NO route that hands a storage credential to the
+	// browser. A credential that leaves this console works from anywhere, for its
+	// whole lifetime, with none of the per-request permission checks applied here
+	// — so the console obtains credentials for its OWN object calls and they go
+	// no further.
 
 	// In iam mode the panel signs object calls with a credential it obtained on
 	// the user's behalf, which makes it the enforcement point. Each route names

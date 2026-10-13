@@ -54,6 +54,11 @@ type ServerConfig struct {
 	// When the frontend is served, a request for one of these regions is
 	// reverse-proxied to that backend. Only meaningful on a frontend instance.
 	RegionEndpoints map[string]string `json:"region_endpoints" koanf:"region_endpoints"`
+	// IAMConsoleURL is the browser-facing address of the IAM console, e.g.
+	// "https://iam.example.com". When set, iam mode links each bucket to its
+	// page there. It is not derived from the control URL, which may be an
+	// in-cluster address a browser cannot reach.
+	IAMConsoleURL string `json:"iam_console_url" koanf:"iam_console_url"`
 }
 
 // IsIAMMode reports whether the panel authenticates users with OIDC rather than
@@ -93,6 +98,9 @@ type ObjectStorageConfig struct {
 	// `aws sts get-session-token`, which would hand them an account-wide
 	// credential to keep. Leave empty when the control endpoint requires none.
 	STSClientKey string `json:"sts_client_key" koanf:"sts_client_key"`
+	// IAMAPIURL is IAM's JSON API base, used to list debug users an admin may
+	// act as. Defaults to control_url's sibling "/api".
+	IAMAPIURL string `json:"iam_api_url" koanf:"iam_api_url"`
 }
 
 // OIDCConfig configures the browser login flow used in AuthModeIAM.
@@ -116,6 +124,8 @@ type OIDCConfig struct {
 	GroupsClaim string `json:"groups_claim" koanf:"groups_claim"`
 	// AdminGroups are the groups whose members get the panel's admin view. The
 	// control endpoint still decides what they may see; this only reveals the UI.
+	// In iam mode this is only the FALLBACK: IAM's own verdict wins whenever the
+	// panel could ask it, and a token without a groups claim never matches.
 	AdminGroups []string `json:"admin_groups" koanf:"admin_groups"`
 	// PostLoginRedirect is where the browser lands after a successful login.
 	PostLoginRedirect string `json:"post_login_redirect" koanf:"post_login_redirect"`

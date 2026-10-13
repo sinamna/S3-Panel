@@ -8,6 +8,8 @@ ARG VITE_AUTH_TOKEN
 ARG VITE_VARIANT=cab
 ARG VITE_CENTRAL_BACKEND_API
 ARG VITE_ENV
+# Path prefix the panel is served under, e.g. /s3-panel. Empty = the host root.
+ARG VITE_BASE_PATH
 # Release version (the git tag), shown in the UI. Falls back to package.json.
 ARG APP_VERSION
 ENV VITE_API_LANGUAGE=$VITE_API_LANGUAGE \
@@ -15,7 +17,8 @@ ENV VITE_API_LANGUAGE=$VITE_API_LANGUAGE \
     VITE_AUTH_TOKEN=$VITE_AUTH_TOKEN \
     VITE_VARIANT=$VITE_VARIANT \
     VITE_CENTRAL_BACKEND_API=$VITE_CENTRAL_BACKEND_API \
-    VITE_ENV=$VITE_ENV
+    VITE_ENV=$VITE_ENV \
+    VITE_BASE_PATH=$VITE_BASE_PATH
 
 # Corepack is unbundled from Node 25+, so install it explicitly (works on any
 # Node major); it activates the pnpm version pinned in package.json.

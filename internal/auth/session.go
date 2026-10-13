@@ -33,12 +33,21 @@ import (
 // out every few minutes, so the access token is refreshed underneath a session
 // that ends at SessionExpiresAt.
 type Session struct {
-	Subject      string   `json:"sub"`
-	Email        string   `json:"email,omitempty"`
-	Name         string   `json:"name,omitempty"`
-	Groups       []string `json:"groups,omitempty"`
-	AccessToken  string   `json:"access_token,omitempty"`
-	RefreshToken string   `json:"refresh_token,omitempty"`
+	Subject string   `json:"sub"`
+	Email   string   `json:"email,omitempty"`
+	Name    string   `json:"name,omitempty"`
+	Groups  []string `json:"groups,omitempty"`
+	// IAMAdmin is IAM's verdict on whether this person is an admin, or nil when
+	// IAM could not be asked. It wins over Groups when present: the unified-panel
+	// client's tokens carry no groups claim, and IAM falls back to the groups it
+	// synced itself.
+	IAMAdmin *bool `json:"iam_admin,omitempty"`
+	// ActAs is the IAM debug user this admin is acting as, or "" (IAM proposal
+	// 008). The identity fields above stay the real admin's; every call to IAM
+	// carries X-IAM-Act-As, and IAM judges it as the debug user.
+	ActAs        string `json:"act_as,omitempty"`
+	AccessToken  string `json:"access_token,omitempty"`
+	RefreshToken string `json:"refresh_token,omitempty"`
 	// ExpiresAt is when the ACCESS TOKEN lapses and must be refreshed.
 	ExpiresAt time.Time `json:"expires_at"`
 	// SessionExpiresAt is when the sign-in itself ends and the user must
@@ -58,10 +67,18 @@ func (s Session) Expired() bool {
 	return !s.SessionExpiresAt.IsZero() && time.Now().After(s.SessionExpiresAt)
 }
 
-// IsAdmin reports whether the session holds one of the configured admin groups.
-// Matching ignores case and a leading "/", which some providers include on group
-// paths but operators usually omit in config.
-func (s Session) IsAdmin(adminGroups []string) bool {
+// IsRealAdmin reports whether the signed-in person is an admin, regardless of
+// acting.
+//
+// IAM's answer decides when the panel has one (true or false). Only when IAM
+// could not be asked — s3 mode, or the call failed — does it fall back to
+// comparing the token's groups with the configured admin groups. That
+// comparison ignores case and a leading "/", which some providers include on
+// group paths but operators usually omit in config.
+func (s Session) IsRealAdmin(adminGroups []string) bool {
+	if s.IAMAdmin != nil {
+		return *s.IAMAdmin
+	}
 	for _, want := range adminGroups {
 		want = strings.TrimPrefix(strings.TrimSpace(want), "/")
 		if want == "" {
@@ -200,3 +217,9 @@ func (c *CookieCodec) Decode(value string) (Session, error) {
 // maxSessionBytes bounds decompression, so a crafted cookie cannot expand into
 // an unbounded allocation.
 const maxSessionBytes = 1 << 20
+
+// IsAdmin reports whether the panel should treat this session as an admin. It
+// is false while acting: the admin is looking through a debug user's eyes.
+func (s Session) IsAdmin(adminGroups []string) bool {
+	return s.ActAs == "" && s.IsRealAdmin(adminGroups)
+}

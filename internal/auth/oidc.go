@@ -11,6 +11,7 @@ import (
 
 	oidc "github.com/coreos/go-oidc/v3/oidc"
 	"github.com/labstack/echo/v4"
+	"go.uber.org/zap"
 	"golang.org/x/oauth2"
 
 	"github.com/snapp-incubator/S3-Panel/internal/config"
@@ -34,6 +35,18 @@ type Authenticator struct {
 	oauth    oauth2.Config
 	verifier *oidc.IDTokenVerifier
 	codec    *CookieCodec
+
+	// OnLogout runs before the session cookie is cleared, with the session that
+	// is about to end. The server uses it to revoke the storage credentials this
+	// console obtained for the person; left nil, logout just clears the cookie.
+	OnLogout func(context.Context, Session)
+
+	// ResolveAdmin asks IAM whether the person holding an access token is an
+	// admin. The server sets it in iam mode; left nil (or failing) the session
+	// keeps no IAM answer and admin falls back to the token's groups claim.
+	ResolveAdmin func(ctx context.Context, accessToken string) (bool, error)
+	// Logger reports a failed ResolveAdmin; nil is silent.
+	Logger *zap.Logger
 
 	// Collapses concurrent and near-concurrent access-token refreshes, so one
 	// refresh token is never redeemed twice. See refreshShared.
@@ -156,6 +169,7 @@ func (a *Authenticator) Callback(c echo.Context) error {
 	if err != nil {
 		return echo.NewHTTPError(http.StatusUnauthorized, err.Error())
 	}
+	session = a.withIAMAdmin(ctx, session)
 	if err := a.Save(c, session); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "could not persist the session")
 	}
@@ -170,7 +184,18 @@ func (a *Authenticator) Callback(c echo.Context) error {
 // Logout clears the session cookie. It does not end the session at the provider:
 // a shared-browser logout is the operator's policy call, and doing it here would
 // sign the user out of every application on the same realm.
+//
+// It does, however, revoke the storage credentials this console obtained on the
+// person's behalf. Without that, signing out leaves a credential live for hours
+// — a real one, usable from anywhere, that the browser no longer shows anyone.
+// OnLogout is best effort: a revoke that fails must not leave the person unable
+// to sign out, and the credential still expires on its own.
 func (a *Authenticator) Logout(c echo.Context) error {
+	if a.OnLogout != nil {
+		if session, ok := a.Load(c); ok {
+			a.OnLogout(c.Request().Context(), session)
+		}
+	}
 	a.clearCookie(c, a.cookieName())
 	return c.NoContent(http.StatusNoContent)
 }
@@ -189,6 +214,8 @@ func (a *Authenticator) Me(c echo.Context) error {
 		"name":          session.Display(),
 		"groups":        session.Groups,
 		"is_admin":      session.IsAdmin(a.cfg.AdminGroups),
+		"real_is_admin": session.IsRealAdmin(a.cfg.AdminGroups),
+		"act_as":        session.ActAs,
 	})
 }
 
@@ -248,7 +275,30 @@ func (a *Authenticator) refresh(ctx context.Context, prior Session) (Session, er
 		// the next refresh.
 		next.RefreshToken = token.RefreshToken
 	}
-	return next, nil
+	// The person's groups may have changed since sign-in; the new token is the
+	// moment to ask IAM again.
+	return a.withIAMAdmin(ctx, next), nil
+}
+
+// withIAMAdmin records IAM's verdict on whether the session's person is an admin.
+//
+// A failed lookup must not sign anyone out or lock an admin out: it leaves
+// whatever the session already knew (nothing at sign-in, so admin falls back to
+// the groups claim; the previous answer on a refresh).
+func (a *Authenticator) withIAMAdmin(ctx context.Context, s Session) Session {
+	if a.ResolveAdmin == nil {
+		return s
+	}
+	admin, err := a.ResolveAdmin(ctx, s.AccessToken)
+	if err != nil {
+		if a.Logger != nil {
+			a.Logger.Warn("could not ask IAM whether the person is an admin",
+				zap.String("subject", s.Subject), zap.Error(err))
+		}
+		return s
+	}
+	s.IAMAdmin = &admin
+	return s
 }
 
 // Save seals a session into the cookie.

@@ -1,3 +1,4 @@
+import { basePath } from '@/lib/basePath'
 import { BaseHeaders } from './config'
 import {
   type FetchError,
@@ -25,7 +26,9 @@ export interface FetchResponse<TData = unknown> {
 }
 
 const config = {
-  baseUrl: import.meta.env.VITE_CENTRAL_BACKEND_API as string,
+  // An explicit backend URL wins; otherwise requests go to the panel's own
+  // backend, under whatever prefix the panel is served at.
+  baseUrl: (import.meta.env.VITE_CENTRAL_BACKEND_API as string) || basePath,
   currentRegion: (localStorage.getItem('currentRegion') as Region) || 'teh-1',
   defaultHeaders: BaseHeaders()
 }

@@ -55,6 +55,15 @@ spec:
         - containerPort: {{ .Values.config.port }}
           protocol: TCP
           name: backend
+        {{- /* Credentials never go in the ConfigMap. In iam mode the Secret holds
+               s3panel_oidc__client_secret, s3panel_oidc__cookie_key and
+               s3panel_object_storage_config__sts_client_key; the config loader
+               maps s3panel_<section>__<key> onto config.toml. */}}
+        {{- with .Values.existingSecret }}
+        envFrom:
+          - secretRef:
+              name: {{ . }}
+        {{- end }}
         resources:
 {{ toYaml .Values.resources | indent 12 }}
         volumeMounts:

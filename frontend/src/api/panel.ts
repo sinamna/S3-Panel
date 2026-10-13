@@ -1,5 +1,7 @@
+import { withBase } from '@/lib/basePath'
 import centralClient from '@/services/http/centralClient'
 import type {
+  IActAsState,
   IIAMBucketDetailResponse,
   IIAMBucketListResponse,
   IPanelConfigResponse,
@@ -37,7 +39,7 @@ const fetchPanelConfig = async (): Promise<IPanelConfigResponse> => {
   let res: Response
 
   try {
-    res = await fetch('/api/config', { credentials: 'include' })
+    res = await fetch(withBase('/api/config'), { credentials: 'include' })
   } catch (cause) {
     throw new PanelRequestError(`panel config unreachable: ${String(cause)}`, 0)
   }
@@ -59,7 +61,7 @@ const fetchPanelSession = async (): Promise<IPanelSessionResponse> => {
   let res: Response
 
   try {
-    res = await fetch('/auth/me', { credentials: 'include' })
+    res = await fetch(withBase('/auth/me'), { credentials: 'include' })
   } catch (cause) {
     throw new PanelRequestError(`session unreachable: ${String(cause)}`, 0)
   }
@@ -112,10 +114,25 @@ const fetchIAMBucketDetail = async (
   return res.data
 }
 
+/** Whether this admin may act as an IAM debug user, and as whom. */
+const fetchActAs = async (): Promise<IActAsState> =>
+  (await centralClient.get<IActAsState>('/s3/api/act-as')).data
+
+const setActAs = async (email: string): Promise<void> => {
+  await centralClient.post('/s3/api/act-as', { email })
+}
+
+const clearActAs = async (): Promise<void> => {
+  await centralClient.delete('/s3/api/act-as')
+}
+
 export {
+  clearActAs,
+  fetchActAs,
   fetchIAMBucketDetail,
   fetchIAMBuckets,
   fetchPanelConfig,
   fetchPanelSession,
-  PanelRequestError
+  PanelRequestError,
+  setActAs
 }

@@ -47,6 +47,14 @@ snapp-object-store:
     # Where short-lived object credentials come from (STS GetSessionToken).
     # Defaults to control_url with its last path segment replaced by "sts".
     sts_url: ""
+    # IAM's JSON API, used to list the debug users an admin may act as.
+    # Defaults to control_url's sibling "/api" (its last path segment replaced
+    # by "api"). Empty keeps the default.
+    iam_api_url: ""
+    # The browser-facing address of the IAM console. When set, each bucket card
+    # links to that bucket's page there, to manage who has access. Not derived
+    # from control_url, which may be an in-cluster address. Empty hides the link.
+    iam_console_url: ""
 
     oidc:
       issuer_url: ""
@@ -56,7 +64,8 @@ snapp-object-store:
       cookie_secure: true
       groups_claim: "groups"
       # Groups whose members get the admin view. The control endpoint still
-      # decides what they may actually see.
+      # decides what they may actually see. Only a fallback: IAM's answer to
+      # "is this person an admin" wins when the panel can ask it.
       admin_groups: []
       scopes: []
       post_login_redirect: "/"
@@ -65,3 +74,9 @@ snapp-object-store:
       # Secret carrying:
       #   s3panel_oidc__client_secret   (omit for a public OIDC client)
       #   s3panel_oidc__cookie_key      (REQUIRED; openssl rand -base64 32)
+
+# Creates the object-store-gitlab-ci ServiceAccount and binds it to
+# registry-editor, so CI can push panel images into this namespace. The panel
+# does not need it to run.
+ciRegistryAccess:
+  enabled: true

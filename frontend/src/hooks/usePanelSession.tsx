@@ -5,6 +5,7 @@ import {
   fetchPanelSession,
   PanelRequestError
 } from '@/api/panel'
+import { withBase } from '@/lib/basePath'
 import type { IPanelSessionResponse, TAuthMode } from '@/types/s3/panel.types'
 
 interface IPanelSessionStore {
@@ -13,6 +14,8 @@ interface IPanelSessionStore {
   loginUrl: string
   /** Server refuses every mutating operation; hide the controls. */
   readOnly: boolean
+  /** Where bucket cards link to manage access; empty hides the link. */
+  iamConsoleUrl: string
   session: IPanelSessionResponse | null
   loading: boolean
   /** Set when bootstrap could not reach the server; null once it succeeds. */
@@ -49,6 +52,7 @@ const usePanelSession = create<IPanelSessionStore>((set, get) => ({
   authMode: null,
   loginUrl: '',
   readOnly: false,
+  iamConsoleUrl: '',
   session: null,
   loading: false,
   bootstrapError: null,
@@ -67,6 +71,7 @@ const usePanelSession = create<IPanelSessionStore>((set, get) => ({
             authMode: config.auth_mode,
             loginUrl: config.login_url ?? '',
             readOnly: config.read_only === true,
+            iamConsoleUrl: '',
             session: null,
             bootstrapError: null
           })
@@ -86,6 +91,7 @@ const usePanelSession = create<IPanelSessionStore>((set, get) => ({
           authMode: config.auth_mode,
           loginUrl: config.login_url ?? '',
           readOnly: config.read_only === true,
+          iamConsoleUrl: config.iam_console_url ?? '',
           session,
           bootstrapError: null
         })
@@ -104,6 +110,7 @@ const usePanelSession = create<IPanelSessionStore>((set, get) => ({
             authMode: 's3',
             loginUrl: '',
             readOnly: false,
+            iamConsoleUrl: '',
             session: null,
             bootstrapError: null
           })
@@ -136,9 +143,12 @@ const usePanelSession = create<IPanelSessionStore>((set, get) => ({
   isAdmin: () => get().session?.is_admin === true,
 
   logout: async () => {
-    await fetch('/auth/logout', { method: 'POST', credentials: 'include' })
+    await fetch(withBase('/auth/logout'), {
+      method: 'POST',
+      credentials: 'include'
+    })
     set({ session: null })
-    window.location.href = '/'
+    window.location.href = withBase('/')
   }
 }))
 

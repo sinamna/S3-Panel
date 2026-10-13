@@ -24,6 +24,9 @@ const _RELEASE_NAME = IS_SENTRY_DISABLED
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  // Served under a path prefix when VITE_BASE_PATH is set (e.g. "/s3-panel"
+  // inside IAM's console); see src/lib/basePath.ts.
+  base: `${(process.env.VITE_BASE_PATH || '').replace(/\/+$/, '')}/`,
   plugins: [react(), version()],
   resolve: {
     alias: {
