@@ -27,24 +27,39 @@ type Client struct {
 	baseURL string
 	stsURL  string
 	apiURL  string
-	// stsClientKey identifies this panel to the control endpoint's STS surface.
-	// Empty when that endpoint requires none.
-	stsClientKey string
-	http         *http.Client
+	// clientKey identifies this panel to the control endpoint as a trusted front
+	// end. Empty when the endpoint requires none.
+	clientKey string
+	http      *http.Client
 }
 
-// stsClientHeader carries stsClientKey. It must match the control endpoint's
-// STSClientHeader.
-const stsClientHeader = "X-IAM-STS-Client"
+// clientKeyHeader carries clientKey. It must match the control endpoint's
+// STSClientHeader; the header keeps its historical name because it began as
+// an STS-only gate, but IAM now demands it on /s3 too
+// (awss3.require_client_key_on_s3).
+const clientKeyHeader = "X-IAM-STS-Client"
 
-// WithSTSClientKey sets the shared secret the STS surface may require.
+// WithClientKey sets the shared secret the control endpoint may require (the
+// sts_client_key setting). It is sent on EVERY call — bucket list, stats and
+// policy on the S3 surface as well as minting and sign-out on STS — so the
+// endpoint can admit this panel and refuse a CLI on both.
 //
 // A setter rather than another constructor argument: the key is optional, the
 // control endpoint works without it, and every existing caller and test should
 // keep building a client the same way.
-func (c *Client) WithSTSClientKey(key string) *Client {
-	c.stsClientKey = strings.TrimSpace(key)
+func (c *Client) WithClientKey(key string) *Client {
+	c.clientKey = strings.TrimSpace(key)
 	return c
+}
+
+// markPanel adds the client key to a request, when one is configured. The
+// user's bearer token on the same request still says WHO is asking; this says
+// the request came through a front end that authorizes every request, rather
+// than from a CLI holding a credential.
+func (c *Client) markPanel(req *http.Request) {
+	if c.clientKey != "" {
+		req.Header.Set(clientKeyHeader, c.clientKey)
+	}
 }
 
 // New builds a client. stsURL may be empty, in which case it is derived from
@@ -209,6 +224,30 @@ type s3Error struct {
 	Message string   `xml:"Message"`
 }
 
+// stsError is the STS (AWS query protocol) error body: the same fields, one
+// level down, under an <ErrorResponse> root. The STS surface answers with it.
+type stsError struct {
+	XMLName xml.Name `xml:"ErrorResponse"`
+	Error   struct {
+		Code    string `xml:"Code"`
+		Message string `xml:"Message"`
+	} `xml:"Error"`
+}
+
+// parseControlError reads the endpoint's own code and message from either
+// error shape, reporting false when the body is neither.
+func parseControlError(payload []byte) (code, message string, ok bool) {
+	var s3 s3Error
+	if xml.Unmarshal(payload, &s3) == nil && s3.Code != "" {
+		return s3.Code, s3.Message, true
+	}
+	var sts stsError
+	if xml.Unmarshal(payload, &sts) == nil && sts.Error.Code != "" {
+		return sts.Error.Code, sts.Error.Message, true
+	}
+	return "", "", false
+}
+
 // Error carries a control-endpoint failure, keeping the HTTP status so handlers
 // can pass an authorization failure through as one instead of flattening it to
 // a 500.
@@ -316,12 +355,7 @@ func (c *Client) SessionCredentials(ctx context.Context, token, region, tenant, 
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
-	// Marks this caller as the panel. The user's token above still says WHO is
-	// asking; this says the request came through a front end that enforces per
-	// request, rather than from a CLI holding the credential afterwards.
-	if c.stsClientKey != "" {
-		req.Header.Set(stsClientHeader, c.stsClientKey)
-	}
+	c.markPanel(req)
 
 	body, err := c.send(req)
 	if err != nil {
@@ -357,6 +391,7 @@ func (c *Client) do(ctx context.Context, method, token, path string, body io.Rea
 		// Disambiguates a bucket name that exists in more than one region.
 		req.Header.Set("region", region)
 	}
+	c.markPanel(req)
 	return c.send(req)
 }
 
@@ -374,9 +409,8 @@ func (c *Client) send(req *http.Request) ([]byte, error) {
 	}
 	if resp.StatusCode >= 400 {
 		apiErr := &Error{Status: resp.StatusCode, Message: strings.TrimSpace(string(payload))}
-		var parsed s3Error
-		if xml.Unmarshal(payload, &parsed) == nil && parsed.Code != "" {
-			apiErr.Code, apiErr.Message = parsed.Code, parsed.Message
+		if code, message, ok := parseControlError(payload); ok {
+			apiErr.Code, apiErr.Message = code, message
 		}
 		return nil, apiErr
 	}
@@ -410,9 +444,7 @@ func (c *Client) RevokeSessions(ctx context.Context, token, region, client strin
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	applyActAs(req)
-	if c.stsClientKey != "" {
-		req.Header.Set(stsClientHeader, c.stsClientKey)
-	}
+	c.markPanel(req)
 	res, err := c.http.Do(req)
 	if err != nil {
 		return err
