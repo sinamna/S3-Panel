@@ -88,8 +88,11 @@ type ObjectStorageConfig struct {
 	// are signed with (AWS STS GetSessionToken). Defaults to ControlURL with its
 	// last path segment replaced by "sts". AuthModeIAM only.
 	STSURL string `json:"sts_url" koanf:"sts_url"`
-	// STSClientKey is a shared secret the control endpoint may require on the STS
-	// surface, marking this panel as a trusted front end.
+	// STSClientKey is a shared secret the control endpoint may require, marking
+	// this panel as a trusted front end. It is sent on every control call: IAM
+	// demands it on /sts, and on /s3 as well when its
+	// awss3.require_client_key_on_s3 is on. The name predates the /s3 gate and
+	// is kept so existing configs keep working.
 	//
 	// It is not a user credential and grants nothing on its own: the signed-in
 	// person is still authenticated and still bounds what may be minted. It exists
