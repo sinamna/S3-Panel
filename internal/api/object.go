@@ -174,8 +174,9 @@ func (s *Server) HandleObjectUpload() echo.HandlerFunc {
 //	@Param			secret_key		header		string								true	"User given SecretKey"
 //	@Param			bucket			query		string								true	"bucket name"
 //	@Param			max_keys		query		string								true	"max_keys of pagination"
-//	@Param			page			query		string								true	"page of pagination"
-//	@Param			search_string	query		string								true	"search by given string, could be empty"
+//	@Param			page			query		string								false	"page number; without continuation_token, page N is reached by skipping N-1 pages"
+//	@Param			continuation_token	query	string								false	"next_continuation_token from the previous page"
+//	@Param			search_string	query		string								false	"search by given string, could be empty"
 //	@Success		200				{object}	storage.ObjectListResponse	"Successful response with bucket list"
 //	@Failure		400				{object}	storage.OperationErrWithMsg	"Bad Request"
 //	@Failure		401				{object}	string								"Unauthorized"
@@ -223,7 +224,6 @@ func (s *Server) HandleObjectList() echo.HandlerFunc {
 				s.logger.Error(errObjectList.Message.Error())
 				return c.JSON(errObjectList.Code, storage.OperationErrWithMsg{Message: errObjectList.Message.Error()})
 			}
-			objects.TotalPages = totalPages(objects.TotalMatchedItems, int(req.MaxKeys))
 			return c.JSON(http.StatusOK, objects)
 		}
 
@@ -262,12 +262,8 @@ func (s *Server) HandleObjectList() echo.HandlerFunc {
 		var bucketFound = false
 		for _, bucketData := range outputBucketQuota.Items {
 			if bucketData.BucketName == req.Bucket {
-				if objects.TotalMatchedItems%int(req.MaxKeys) == 0 {
-					objects.TotalPages = objects.TotalMatchedItems / int(req.MaxKeys)
-				} else {
-					objects.TotalPages = (objects.TotalMatchedItems / int(req.MaxKeys)) + 1
-				}
 				bucketFound = true
+				break
 			}
 		}
 
